@@ -159,3 +159,16 @@ multiple Flutter or Dart projects.
 For help getting started with Flutter, view our
 [online documentation](https://flutter.dev/docs), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## Tests
+
+Run `flutter pub get` and `flutter test` with a current Flutter SDK (Dart 3.2+).
+The memory regression tests use the dev-only `leak_tracker` dependency to check
+garbage collection of removed models, controller snapshots, and callbacks,
+including when an automatic-start future never completes. The library itself
+retains its existing SDK constraints.
+
+Run `flutter test --enable-vmservice` to also count live registration and
+readiness objects after GC during repeated target updates, replacements, and
+callback changes. These heap-count tests are skipped without the VM service;
+the other memory tests run with the default command.

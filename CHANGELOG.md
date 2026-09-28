@@ -1,3 +1,19 @@
+## [Unreleased]
+
+* Release tooltip models when their owning items unmount, change display index,
+  or move to another controller; preserve replacement ownership by widget key.
+* Clear retained models and callbacks when the controller is disposed, and avoid
+  adding persistent subscriptions when reading its playback stream.
+* Hide a removed active target safely without triggering tutorial completion.
+* Release models held by pending automatic starts and snapshots from replaced
+  controllers; unregister scaffold-owned readiness callbacks on unmount.
+* Update active replacements and preserve navigation after target removal,
+  without re-registering targets on every playback event.
+* Deduplicate pending readiness checks and shared-future listeners; detach
+  removed owners without retaining registration tokens until readiness resolves.
+* Respect pause and completion when automatic-start results arrive, and notify
+  completion only once per explicit start.
+
 ## [0.2.3] - 2023-06-16
 
 * Fix Updates from 0.2.2 not reflecting

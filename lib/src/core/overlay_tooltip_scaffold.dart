@@ -30,9 +30,7 @@ abstract class OverlayTooltipScaffoldImpl extends StatefulWidget {
     this.dismissOnTap = false,
     this.preferredOverlay,
     this.height,
-  }) : super(key: key) {
-    if (startWhen != null) controller.setStartWhen(startWhen!);
-  }
+  }) : super(key: key);
 
   @override
   State<OverlayTooltipScaffoldImpl> createState() =>
@@ -41,6 +39,36 @@ abstract class OverlayTooltipScaffoldImpl extends StatefulWidget {
 
 class OverlayTooltipScaffoldImplState
     extends State<OverlayTooltipScaffoldImpl> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.startWhen != null) {
+      widget.controller.setStartWhen(widget.startWhen!);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant OverlayTooltipScaffoldImpl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller) ||
+        !identical(oldWidget.startWhen, widget.startWhen)) {
+      if (oldWidget.startWhen != null) {
+        oldWidget.controller.clearStartWhen(oldWidget.startWhen!);
+      }
+      if (widget.startWhen != null) {
+        widget.controller.setStartWhen(widget.startWhen!);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    if (widget.startWhen != null) {
+      widget.controller.clearStartWhen(widget.startWhen!);
+    }
+    super.dispose();
+  }
+
   void addPlayableWidget(OverlayTooltipModel model) {
     widget.controller.addPlayableWidget(model);
   }
@@ -49,38 +77,43 @@ class OverlayTooltipScaffoldImplState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: StreamBuilder<OverlayTooltipModel?>(
-        stream: widget.controller.widgetsPlayStream,
-        builder: (context, snapshot) {
-          final show = snapshot.data == null ||
-              snapshot.data!.widgetKey.globalPaintBounds == null;
-          if (widget.height == null) {
-            return _stackBody(show, snapshot);
-          }
-          final baseHeight = MediaQuery.of(context).size.height;
-          final height = show ? baseHeight : (widget.height ?? baseHeight);
-          return SingleChildScrollView(
-            physics: show ? NeverScrollableScrollPhysics() : null,
-            child: SizedBox(
-              height: height,
-              child: _stackBody(show, snapshot),
-            ),
-          );
-        },
+    // Stream events rebuild the overlay without rebuilding and re-registering
+    // its targets. Parent updates still rebuild this content normally.
+    final content = Builder(builder: widget.builder);
+    return OverlayTooltipControllerScope(
+      controller: widget.controller,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: _TooltipStreamBuilder(
+          stream: widget.controller.widgetsPlayStream,
+          builder: (context, snapshot) {
+            final show = snapshot.data == null ||
+                snapshot.data!.widgetKey.globalPaintBounds == null;
+            if (widget.height == null) {
+              return _stackBody(show, snapshot, content);
+            }
+            final baseHeight = MediaQuery.of(context).size.height;
+            final height = show ? baseHeight : (widget.height ?? baseHeight);
+            return SingleChildScrollView(
+              physics: show ? NeverScrollableScrollPhysics() : null,
+              child: SizedBox(
+                height: height,
+                child: _stackBody(show, snapshot, content),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
-  Stack _stackBody(bool show, AsyncSnapshot<OverlayTooltipModel?> snapshot) {
+  Stack _stackBody(
+      bool show, AsyncSnapshot<OverlayTooltipModel?> snapshot, Widget content) {
     return Stack(
       key: ValueKey('OverlayTooltipScaffoldStack'),
       fit: StackFit.expand,
       children: [
-        Positioned.fill(child: Builder(builder: (context) {
-          return widget.builder(context);
-        })),
+        Positioned.fill(child: content),
         show
             ? SizedBox.shrink()
             : Container(
@@ -130,6 +163,34 @@ class OverlayTooltipScaffoldImplState
   }
 }
 
+class OverlayTooltipControllerScope extends InheritedWidget {
+  final TooltipController controller;
+
+  const OverlayTooltipControllerScope(
+      {required this.controller, required Widget child})
+      : super(child: child);
+
+  static TooltipController? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<OverlayTooltipControllerScope>()
+      ?.controller;
+
+  @override
+  bool updateShouldNotify(OverlayTooltipControllerScope oldWidget) =>
+      !identical(oldWidget.controller, controller);
+}
+
+class _TooltipStreamBuilder extends StreamBuilder<OverlayTooltipModel?> {
+  const _TooltipStreamBuilder({
+    required Stream<OverlayTooltipModel?> stream,
+    required AsyncWidgetBuilder<OverlayTooltipModel?> builder,
+  }) : super(stream: stream, builder: builder);
+
+  @override
+  AsyncSnapshot<OverlayTooltipModel?> afterDisconnected(
+          AsyncSnapshot<OverlayTooltipModel?> current) =>
+      const AsyncSnapshot<OverlayTooltipModel?>.nothing();
+}
+
 class _TooltipLayout extends StatelessWidget {
   final OverlayTooltipModel model;
   final TooltipController controller;
@@ -140,8 +201,10 @@ class _TooltipLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var topLeft = model.widgetKey.globalPaintBounds!.topLeft;
-    var bottomRight = model.widgetKey.globalPaintBounds!.bottomRight;
+    final Rect? bounds = model.widgetKey.globalPaintBounds;
+    if (bounds == null) return const SizedBox.shrink();
+    var topLeft = bounds.topLeft;
+    var bottomRight = bounds.bottomRight;
 
     return LayoutBuilder(builder: (context, size) {
       if (topLeft.dx < 0) {
